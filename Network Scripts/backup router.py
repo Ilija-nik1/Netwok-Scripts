@@ -18,7 +18,7 @@ hostname.split(" ")
 hostname,device = hostname.split(" ")
 print ("Backing up " + device)
  
-filename = '/C:\Users\Ilija-PC\OneDrive\Documents\Networks\Network Scripts' + device + '.txt'
+filename = '/C:\Users' + device + '.txt'
 # to save backup to same folder as script use below line and comment out above line 
 # filename = device + '.txt'
  
