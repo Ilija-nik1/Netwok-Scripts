@@ -1,21 +1,24 @@
-#This code will connect to a Cisco device at the specified IP address, set the hostname to "my-router"
-#Create a VLAN with ID 10 and name "VLAN10", and add a switchport to the VLAN.
 from cisco import CiscoDevice
 
-device = CiscoDevice(host='192.168.1.1', username='admin', password='secret')
-device.open()
+def configure_cisco_device():
+    try:
+        # Connect to the Cisco device
+        with CiscoDevice(host='192.168.1.1', username='admin', password='secret') as device:
+            # Set the hostname of the device
+            device.set_hostname('my-router')
 
-# Set the hostname of the device
-device.set_hostname('my-router')
+            # Create a VLAN with ID 10 and name 'VLAN10'
+            device.create_vlan(10, 'VLAN10')
 
-# Create a VLAN with ID 10 and name 'VLAN10'
-device.create_vlan(10, 'VLAN10')
+            # Add a switchport to VLAN 10
+            device.create_switchport(10)
 
-# Add a switchport to VLAN 10
-device.create_switchport(10)
+            # Save the configuration
+            device.save_config()
 
-# Save the configuration
-device.save_config()
+        print("Configuration successful.")
+    except Exception as e:
+        print("Error configuring the Cisco device:", e)
 
-# Close the connection to the device
-device.close()
+if __name__ == "__main__":
+    configure_cisco_device()
