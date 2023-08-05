@@ -2,10 +2,18 @@ import paramiko
 import base64
 from Crypto.Cipher import AES
 
-# RouterOS credentials
-router_ip = "192.168.1.1"
-router_username = "admin"
-router_password = "your_router_password"
+# Define constants
+ENCRYPTION_KEY = b"0123456789ABCDEF"
+ROUTER_IP = "192.168.1.1"
+ROUTER_USERNAME = "admin"
+ROUTER_PASSWORD = "your_router_password"
+
+# Function to establish SSH connection
+def establish_ssh_connection():
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(ROUTER_IP, username=ROUTER_USERNAME, password=ROUTER_PASSWORD)
+    return ssh
 
 # Function to encrypt the password for secure transmission
 def encrypt_password(password, key):
@@ -14,7 +22,7 @@ def encrypt_password(password, key):
     encrypted_password = cipher.encrypt(padded_password.encode())
     return base64.b64encode(encrypted_password).decode()
 
-# Function to connect to the RouterOS and send commands
+# Function to send a single command and receive output
 def send_command(session, command):
     session.exec_command(command)
     return session.recv(8192).decode()
@@ -53,14 +61,10 @@ def configure_pppoe_server(session, interface, service_name, authentication_type
     cmd = f"/interface pppoe-server server add interface={interface} service-name={service_name}"
     run_commands(session, [cmd])
 
-    cmd = f"/interface pppoe-server server profile add name=default local-address=\
-        192.168.1.1 remote-address=pppoe-pool use-encryption=yes only-one=default use-mpls=default\
-        use-compression=default use-vj-compression=default dns-server=8.8.8.8,8.8.4.4"
+    cmd = f"/interface pppoe-server server profile add name=default local-address=192.168.1.1 remote-address=pppoe-pool use-encryption=yes only-one=default use-mpls=default use-compression=default use-vj-compression=default dns-server=8.8.8.8,8.8.4.4"
     run_commands(session, [cmd])
 
-    cmd = f"/ppp secret add name={username} password={password} service=pppoe profile=default\
-        local-address=192.168.1.1 remote-address=pppoe-pool use-mpls=default use-compression=default\
-        use-vj-compression=default"
+    cmd = f"/ppp secret add name={username} password={password} service=pppoe profile=default local-address=192.168.1.1 remote-address=pppoe-pool use-mpls=default use-compression=default use-vj-compression=default"
     return send_command(session, cmd)
 
 # Function to add static routes
@@ -68,17 +72,12 @@ def add_static_route(session, destination, gateway):
     cmd = f"/ip route add dst-address={destination} gateway={gateway}"
     return send_command(session, cmd)
 
-if __name__ == "__main__":
-    # Establish SSH connection
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(router_ip, username=router_username, password=router_password)
+def main():
+    ssh = establish_ssh_connection()
 
-    # Encrypt the password for secure transmission
-    encrypted_password = encrypt_password(router_password, b"0123456789ABCDEF")  # Change the key if needed
+    encrypted_password = encrypt_password(ROUTER_PASSWORD, ENCRYPTION_KEY)
 
-    # Send basic configuration commands
-    commands = [
+    basic_commands = [
         f"/ip address add address=192.168.1.1/24 interface=ether1",
         f"/ip dhcp-client add dhcp-options=hostname,clientid disabled=no interface=ether1",
         f"/ip firewall filter add chain=input action=accept connection-state=established,related",
@@ -88,26 +87,22 @@ if __name__ == "__main__":
         f"/ip service set telnet disabled=yes",
         f"/user set 0 password={encrypted_password}",
     ]
+    run_commands(ssh, basic_commands)
 
-    run_commands(ssh, commands)
-
-    # Example: Configure VLANs
     configure_vlans(ssh, 10, "ether2")
     configure_vlans(ssh, 20, "ether3")
 
-    # Example: Create Firewall Address Lists
     create_firewall_address_list(ssh, "allowed_clients", "192.168.1.100,192.168.1.101")
 
-    # Example: Configure NAT Rules
     configure_nat(ssh, "src-nat", "192.168.1.0/24", "203.0.113.10")
 
-    # Example: Configure DHCP Server
     configure_dhcp_server(ssh, "ether1", "192.168.1.100-192.168.1.200", "192.168.1.1", "8.8.8.8,8.8.4.4")
 
-    # Example: Configure PPPoE Server
     configure_pppoe_server(ssh, "ether2", "MyPPPoEService", "chap", "pppoe_user", "pppoe_password")
 
-    # Example: Add Static Route
     add_static_route(ssh, "10.0.0.0/24", "192.168.1.254")
 
     ssh.close()
+
+if __name__ == "__main__":
+    main()

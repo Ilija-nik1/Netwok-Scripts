@@ -1,5 +1,5 @@
-import paramiko
 import concurrent.futures
+import paramiko
 
 class MikroTikRouter:
     def __init__(self, hostname, username, password):
@@ -31,9 +31,8 @@ class MikroTikRouter:
             return
 
         try:
-            sftp_client = self.ssh_client.open_sftp()
-            sftp_client.put(local_file_path, remote_file_path)
-            sftp_client.close()
+            with self.ssh_client.open_sftp() as sftp_client:
+                sftp_client.put(local_file_path, remote_file_path)
 
             print(f"Backup file '{local_file_path}' transferred to '{self.hostname}' as '{remote_file_path}' successfully.")
         except Exception as e:
@@ -89,13 +88,15 @@ def main():
         for router in routers:
             router.connect()
 
-        # Transfer backups
-        for router in routers:
-            executor.submit(router.transfer_backup, local_backup_file, remote_backup_file)
+        # Use concurrent.futures to execute methods concurrently
+        futures = []
 
-        # Create backups
         for router in routers:
-            router.create_backup("backup_file.rsc")
+            futures.append(executor.submit(router.transfer_backup, local_backup_file, remote_backup_file))
+            futures.append(executor.submit(router.create_backup, "backup_file.rsc"))
+
+        # Wait for all futures to complete
+        concurrent.futures.wait(futures)
 
         # Check backup existence
         for router in routers:
