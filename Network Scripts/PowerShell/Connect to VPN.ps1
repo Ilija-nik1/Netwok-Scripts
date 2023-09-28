@@ -1,55 +1,69 @@
+param (
+    $timeout = 60
+)
+
+# Function to get a list of available VPN connections
 function Get-VPNConnections {
-    # Get a list of available VPN connections
-    return Get-VpnConnection | Select-Object -Property Name, ServerAddress
+    Get-VpnConnection | Select-Object -Property Name, ServerAddress
 }
 
+# Function to display a list of VPN connections with numbers and spacing
 function Display-VPNConnections($connections) {
-    # Display the list of VPN connections with numbers and spacing
-    Write-Host "Available VPN Connections:"
+    Write-Output "Available VPN Connections:"
     $connections | ForEach-Object {
-        $index = [array]::IndexOf($connections, $_) + 1
+        $index = $_.PSObject.Properties['Index'].Value
         $formattedIndex = "{0,-3}" -f $index  # Add spacing for alignment
-        Write-Host "$formattedIndex. $($_.Name) - $($_.ServerAddress)"
+        Write-Output "$formattedIndex. $($_.Name) - $($_.ServerAddress)"
     }
 }
 
+# Function to connect to the selected VPN connection (if available)
 function Connect-To-VPN($connection) {
-    # Connect to the selected VPN connection (if available)
     if ($connection) {
-        Write-Host "Connecting to $($connection.Name)..."
-        $connectResult = Connect-VpnS2SInterface -Name $connection.Name -AsJob
+        Write-Output "Connecting to $($connection.Name)..."
+        $connectResult = Start-Job -ScriptBlock {
+            param ($connectionName)
+            Connect-VpnS2SInterface -Name $connectionName
+        } -ArgumentList $connection.Name
 
-        # Wait for the connection to complete
-        $timeout = 60  # Adjust the timeout as needed
-        try {
-            Wait-Job $connectResult -Timeout $timeout | Out-Null
-            $jobOutput = Receive-Job $connectResult -ErrorAction Stop
+        $jobCompleted = $false
+        $jobOutput = $null
+        do {
+            $jobOutput = Receive-Job $connectResult -ErrorAction SilentlyContinue
             if ($jobOutput -match "Connected") {
-                Write-Host "Connected to $($connection.Name)."
+                $jobCompleted = $true
+                Write-Output "Connected to $($connection.Name)."
+            } elseif ($jobOutput -match "Failed") {
+                $jobCompleted = $true
+                Write-Output "Connection to $($connection.Name) failed."
             } else {
-                Write-Host "Connection to $($connection.Name) failed."
+                Start-Sleep -Seconds 1
             }
-        } catch {
-            Write-Host "Connection to $($connection.Name) failed: $_"
-        } finally {
-            Remove-Job $connectResult
-        }
+        } while (-not $jobCompleted -and $timeout -gt 0)
+
+        Remove-Job $connectResult  # Clean up the job
     } else {
-        Write-Host "Selected VPN connection not found."
+        Write-Output "Selected VPN connection not found."
     }
 }
 
 # Main script logic
-$vpnConnections = Get-VPNConnections
+$vpnConnections = Get-VPNConnections | ForEach-Object {
+    [PSCustomObject]@{
+        Index = $_.PSObject.Properties['Name'].Value
+        Name = $_.Name
+        ServerAddress = $_.ServerAddress
+    }
+}
 Display-VPNConnections $vpnConnections
 
 do {
     $selectedIndex = Read-Host "Enter the number of the VPN connection you want to connect to"
 
-    if (-not [int]::TryParse($selectedIndex, [ref]$null) -or $selectedIndex -lt 1 -or $selectedIndex -gt $vpnConnections.Count) {
-        Write-Host "Invalid selection. Please enter a valid number."
+    if (-not ([int]::TryParse($selectedIndex, [ref]$null) -and $selectedIndex -ge 1 -and $selectedIndex -le $vpnConnections.Count)) {
+        Write-Output "Invalid selection. Please enter a valid number."
     }
-} while (-not [int]::TryParse($selectedIndex, [ref]$null) -or $selectedIndex -lt 1 -or $selectedIndex -gt $vpnConnections.Count)
+} while (-not ([int]::TryParse($selectedIndex, [ref]$null) -and $selectedIndex -ge 1 -and $selectedIndex -le $vpnConnections.Count))
 
-$selectedConnection = $vpnConnections[$selectedIndex - 1]
+$selectedConnection = $vpnConnections | Where-Object { $_.Index -eq [int]$selectedIndex }
 Connect-To-VPN $selectedConnection
