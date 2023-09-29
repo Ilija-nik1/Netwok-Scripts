@@ -1,6 +1,7 @@
 $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 $numThreads = 2
 
+# Function to clear Chrome cache for a given user data directory
 function Clear-Chrome-Cache {
     param (
         [string]$userDataDir,
@@ -26,13 +27,14 @@ function Clear-Chrome-Cache {
             Remove-Item $userDataDir -Force -Recurse
         }
 
-        Write-Host "Chrome cache has been cleared."
+        Write-Host "Chrome cache has been cleared for user data directory: $userDataDir"
     }
     catch {
         Write-Host "An error occurred: $_"
     }
 }
 
+# Function to start multiple threads
 function Start-Multiple-Threads {
     param (
         [int]$numThreads,
@@ -49,12 +51,12 @@ function Start-Multiple-Threads {
     $threads | ForEach-Object { $_.Join() }
 }
 
-# Define a unique user data directory for each thread
+# Define a unique user data directory for each thread and clear Chrome cache in parallel
 for ($i = 0; $i -lt $numThreads; $i++) {
     $userDataDir = Join-Path $env:USERPROFILE "TempProfile$i"
     
     # Use the Start-Multiple-Threads function to run multiple threads
-    Start-Multiple-Threads -numThreads 2 -scriptBlock {
+    Start-Multiple-Threads -numThreads $numThreads -scriptBlock {
         param (
             [string]$userDataDir,
             [string]$chromePath
@@ -62,3 +64,6 @@ for ($i = 0; $i -lt $numThreads; $i++) {
         Clear-Chrome-Cache -userDataDir $userDataDir -chromePath $chromePath
     } -userDataDir $userDataDir -chromePath $chromePath
 }
+
+# Notify when all threads have completed
+Write-Host "All threads have completed."
